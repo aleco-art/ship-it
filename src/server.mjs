@@ -12,8 +12,8 @@ import { readFile, stat, mkdir, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve as resolvePath, basename } from 'node:path';
-import { randomUUID } from 'node:crypto';
-import { homedir, tmpdir } from 'node:os';
+import { randomUUID, createHash } from 'node:crypto';
+import { homedir } from 'node:os';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.SHIP_IT_PORT || 4319);
@@ -116,6 +116,21 @@ async function spawnTool(cmd, args, opts = {}) {
   return spawn(full, args, opts);
 }
 
+/**
+ * Stop a spawned tool and everything it started. On Windows the child is the
+ * cmd.exe wrapper, so kill() would end the shim and leave the real process -
+ * an agent mid-deploy - running unsupervised.
+ */
+function killTree(child) {
+  if (!child?.pid) return;
+  if (IS_WIN) {
+    const t = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    t.on('error', () => child.kill());
+    return;
+  }
+  child.kill();
+}
+
 async function run(cmd, args, opts = {}) {
   let child;
   try {
@@ -215,15 +230,18 @@ async function stepStatus() {
   });
 
   const cc = await which('claude');
-  // There is no cheap "am I signed in" command, so this reads the config file
-  // the CLI writes once it has an account. It is a hint, not proof: the first
-  // run tells you for certain.
-  const ccConfig = existsSync(join(homedir(), '.claude.json'));
+  // Unlike gh and vercel there is no free way to ask this CLI whether it has a
+  // session: the token lives in the OS credential store, the config file it
+  // writes stays behind after a sign-out, and the only real probe is a billed
+  // request. So this reports installation honestly, keeps the Sign in button
+  // available, and lets the run itself be the authority - startRun turns the
+  // CLI's own "Not logged in" into an actionable message.
   steps.push({
     id: 'claude', label: 'Claude Code', kind: 'account',
-    installed: Boolean(cc), authed: Boolean(cc && ccConfig),
-    detail: !cc ? 'CLI not installed' : ccConfig ? 'installed and configured' : 'installed, not signed in yet',
-    action: !cc ? 'install' : ccConfig ? null : 'login',
+    installed: Boolean(cc), authed: Boolean(cc),
+    detail: cc ? 'installed - sign-in is confirmed by the first run' : 'CLI not installed',
+    action: cc ? 'login' : 'install',
+    buttonLabel: cc ? 'Sign in' : 'Install',
   });
 
   return {
@@ -249,7 +267,7 @@ async function launchSetup(idRaw, actionRaw) {
   if (!command) throw new Error(`No ${action} command for ${id} on ${PLATFORM}`);
 
   try {
-    openTerminal(command);
+    await openTerminal(command);
     return { launched: true, command };
   } catch (e) {
     // Falling back to "run this yourself" is better than pretending it worked.
@@ -257,7 +275,7 @@ async function launchSetup(idRaw, actionRaw) {
   }
 }
 
-function openTerminal(command) {
+async function openTerminal(command) {
   if (IS_WIN) {
     const child = spawn('cmd.exe', ['/c', 'start', 'ship-it setup', 'cmd.exe', '/k', command],
       { detached: true, stdio: 'ignore' });
@@ -276,14 +294,18 @@ function openTerminal(command) {
     ['konsole', ['-e', 'bash', '-lc', `${command}; exec bash`]],
     ['xterm', ['-e', `bash -lc '${command.replace(/'/g, "'\\''")}; exec bash'`]],
   ];
+  // spawn reports a missing binary through an async 'error' event, not a
+  // throw, so a try/catch around it always looks like success and the loop
+  // never reaches the terminal the machine actually has. Resolve first.
   for (const [bin, args] of terminals) {
-    try {
-      const child = spawn(bin, args, { detached: true, stdio: 'ignore' });
-      child.unref();
-      return;
-    } catch { /* try the next one */ }
+    if (!(await which(bin))) continue;
+    const child = spawn(bin, args, { detached: true, stdio: 'ignore' });
+    child.on('error', () => { /* reported by the caller's fallback */ });
+    child.unref();
+    return;
   }
-  throw new Error('No terminal emulator found');
+  throw new Error('No terminal emulator found (tried '
+    + terminals.map(([b]) => b).join(', ') + ')');
 }
 
 // --------------------------------------------------------- source resolving
@@ -313,7 +335,7 @@ function validateRepoName(raw) {
  * and a git remote URL. A localhost URL is rejected on purpose, with an
  * explanation - a running server has no source tree to ship.
  */
-async function resolveSource(raw, { clone = true } = {}) {
+async function resolveSource(raw) {
   if (typeof raw !== 'string' || !raw.trim()) throw new Error('Paste a project folder or a git URL');
   let input = raw.trim().replace(/^["']|["']$/g, '');
 
@@ -330,8 +352,11 @@ async function resolveSource(raw, { clone = true } = {}) {
   if (GIT_URL.test(input)) {
     const name = sanitizeRepoName(basename(input.replace(/\/+$/, '')));
     if (!name) throw new Error('Could not work out a project name from that URL');
-    const dest = join(WORKSPACE, name);
-    if (!clone) return { path: dest, origin: input, cloned: true, name, pending: !existsSync(dest) };
+    // Two different remotes can share a basename - your fork and the upstream,
+    // or two owners' "portfolio". Keying the directory on the URL stops the
+    // second one silently reusing the first one's clone and shipping it.
+    const dest = join(WORKSPACE,
+      `${name}-${createHash('sha1').update(input).digest('hex').slice(0, 7)}`);
     if (existsSync(dest) && (await readdir(dest)).length) {
       return { path: dest, origin: input, cloned: true, name, reused: true };
     }
@@ -370,7 +395,9 @@ async function inspectProject(source) {
   else if (deps['@sveltejs/kit']) framework = 'SvelteKit';
   else if (deps.astro) framework = 'Astro';
   else if (deps['react-scripts']) framework = 'Create React App';
-  else if (await has('vite.config.js') || await has('vite.config.ts')) framework = 'Vite';
+  else if (await has('vite.config.js') || await has('vite.config.ts')
+           || await has('vite.config.mjs') || await has('vite.config.mts')
+           || await has('vite.config.cjs')) framework = 'Vite';
   else if (deps.express || deps.fastify) { framework = 'Node server'; deployable = false; }
   else if (await has('index.html')) framework = 'Static site';
 
@@ -440,6 +467,14 @@ async function startRun(cfg) {
   const id = randomUUID();
   const state = { id, events: [], done: false, listeners: new Set(), child: null };
   runs.set(id, state);
+  // A long-lived panel would otherwise hold every transcript it has ever
+  // streamed. Keep the recent ones so a reload can still replay, drop the rest.
+  if (runs.size > 20) {
+    for (const [key, old] of runs) {
+      if (runs.size <= 20) break;
+      if (old.done && key !== id) runs.delete(key);
+    }
+  }
 
   push(state, { type: 'meta', text: `project  ${cfg.path}` });
   push(state, { type: 'meta', text: `repo     ${cfg.repo} (${cfg.existing ? 'existing' : 'new'}, ${cfg.visibility})` });
@@ -458,20 +493,31 @@ async function startRun(cfg) {
   // A headless run cannot answer a permission prompt, so its permissions are
   // decided up front. Grant exactly the tools this pipeline uses rather than
   // disabling the permission system: anything else still stops the run.
+  // Both Bash spec spellings are listed because the CLI documents "Bash(git *)"
+  // while settings files use "Bash(git:*)", and a rule that matches nothing
+  // fails closed - every command denied, mid-run, with no way to answer.
+  const CMDS = ['git', 'gh', 'vercel', 'node', 'npm', 'pnpm', 'yarn', 'bun'];
   const ALLOWED = [
-    'Bash(git:*)', 'Bash(gh:*)', 'Bash(vercel:*)', 'Bash(node:*)',
-    'Bash(npm:*)', 'Bash(pnpm:*)', 'Bash(yarn:*)', 'Bash(bun:*)',
+    ...CMDS.map((c) => `Bash(${c}:*)`),
+    ...CMDS.map((c) => `Bash(${c} *)`),
+    'Task',            // without this the run cannot spawn the ship-it subagent
     'Read', 'Write', 'Edit', 'Glob', 'Grep', 'WebFetch',
   ].join(',');
 
   let child;
   try {
+    // The prompt goes over stdin, never argv. On Windows the CLI is a .cmd
+    // shim, so an argument would pass through cmd.exe, which truncates it at
+    // the first newline - the agent would receive the opening line and lose
+    // the path, repo name and target entirely.
     child = await spawnTool('claude', [
-      '-p', prompt,
+      '-p',
       '--output-format', 'stream-json', '--verbose',
       '--permission-mode', 'acceptEdits',
       '--allowedTools', ALLOWED,
-    ], { cwd: cfg.path, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env } });
+    ], { cwd: cfg.path, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env } });
+    child.stdin.on('error', () => { /* the close handler reports the failure */ });
+    child.stdin.end(prompt);
   } catch (e) {
     push(state, { type: 'error', text: e.message });
     state.done = true;
@@ -514,7 +560,16 @@ function translate(state, line) {
       }
     }
   } else if (msg.type === 'result') {
-    push(state, { type: 'result', text: msg.result || '', error: Boolean(msg.is_error) });
+    const text = msg.result || '';
+    // The panel cannot tell in advance whether this CLI has a session, so the
+    // run is where that surfaces. Turn its terse notice into the actual fix.
+    if (/not logged in|please run \/login|authentication_failed/i.test(text)) {
+      push(state, { type: 'error', text:
+        'Claude Code is installed but not signed in, so the agent never started.\n'
+        + 'Press "Sign in" on the Claude Code row, finish /login in the terminal it '
+        + 'opens, then run this again. Nothing was created.' });
+    }
+    push(state, { type: 'result', text, error: Boolean(msg.is_error) });
   }
 }
 
@@ -599,7 +654,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/stop' && req.method === 'POST') {
       const b = await readJson(req);
       const state = runs.get(b.id);
-      if (state?.child && !state.done) state.child.kill();
+      if (state?.child && !state.done) killTree(state.child);
       return json(res, 200, { stopped: true });
     }
     return json(res, 404, { error: 'Not found' });

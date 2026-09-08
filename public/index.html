@@ -316,7 +316,9 @@ function renderSteps(steps) {
       if (waiting === step.id) {
         b.textContent = 'waiting...'; b.disabled = true; row.classList.add('waiting');
       } else {
-        b.textContent = step.action === 'install' ? 'Install' : 'Connect';
+        b.textContent = step.buttonLabel
+          || (step.action === 'install' ? 'Install' : 'Connect');
+        if (done) b.classList.add('ghost');   // already satisfied, so secondary
         b.onclick = () => (PREVIEW ? previewNudge() : setup(step.id, step.action));
       }
       row.appendChild(b);

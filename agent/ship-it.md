@@ -1,7 +1,7 @@
 ---
 name: ship-it
 description: Ships a working localhost project end-to-end to a fully documented GitHub repo plus a live Vercel production deployment. Use when the user says "ship this", "deploy this", "put this on GitHub and Vercel", "publish this project", or wants a local folder turned into a real repo with a real README and a production URL. Covers auth preflight, secret scanning, the local build gate, env-var migration, documentation, repo creation, Vercel linking, deploy, and post-deploy verification. Also use to resume a half-shipped project.
-tools: Bash, PowerShell, Read, Write, Edit, Glob, Grep, WebFetch
+tools: Bash, Read, Write, Edit, Glob, Grep, WebFetch
 model: opus
 ---
 
