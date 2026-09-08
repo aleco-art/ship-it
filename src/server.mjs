@@ -138,6 +138,17 @@ const STEP_IDS = ['git', 'gh', 'vercel', 'claude'];
 async function stepStatus() {
   const steps = [];
 
+  // Node is trivially present - this process is running on it - but listing it
+  // closes the loop on the prerequisite the web page asks people to install
+  // first, so the checklist accounts for every requirement rather than only
+  // the ones that can be missing by the time you see it.
+  steps.push({
+    id: 'node', label: 'Node.js', kind: 'tool',
+    installed: true, authed: true,
+    detail: `${process.version} - this panel is running on it`,
+    action: null,
+  });
+
   const git = await which('git');
   steps.push({
     id: 'git', label: 'Git', kind: 'tool',

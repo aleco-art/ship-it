@@ -174,7 +174,7 @@
 
   <div class="card">
     <h2>Setup <a href="?demo=1" class="seedemo" id="seedemo" hidden>see it as a new user</a></h2>
-    <p class="lead" id="setupLead">Four things have to be present and signed in. Each button opens a
+    <p class="lead" id="setupLead">Five things have to be present, and two of them signed in. Each button opens a
       terminal and runs the command for you &mdash; you finish the sign-in there, in the official
       CLI, so no password or token ever passes through this app.</p>
     <div id="steps"></div>
@@ -287,9 +287,13 @@ const post = (url, body) => fetch(url, {
 let PREVIEW = false;
 let ready = false, pathOk = false, repoOk = false, runId = null, es = null, waiting = null;
 
-const ORDER = [['git', 'Git'], ['gh', 'GitHub'], ['vercel', 'Vercel'], ['claude', 'Claude Code']];
-// What a machine that has never been set up actually looks like.
+const ORDER = [['node', 'Node.js'], ['git', 'Git'], ['gh', 'GitHub'],
+               ['vercel', 'Vercel'], ['claude', 'Claude Code']];
+// What a machine that has never been set up actually looks like. Node leads
+// because nothing else can be installed until it exists - it is step 1 of the
+// banner above, and the reason the rest of this page can run at all.
 const FRESH = [
+  { id: 'node', label: 'Node.js', installed: false, authed: false, detail: 'not installed - needed for npx', action: null },
   { id: 'git', label: 'Git', installed: false, authed: false, detail: 'not installed', action: 'install' },
   { id: 'gh', label: 'GitHub', installed: false, authed: false, detail: 'CLI not installed', action: 'install' },
   { id: 'vercel', label: 'Vercel', installed: false, authed: false, detail: 'CLI not installed', action: 'install' },
