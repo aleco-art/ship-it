@@ -42,6 +42,12 @@
   .cmd button{flex:none;background:transparent;border:1px solid var(--line2);color:var(--dim);
     border-radius:6px;padding:5px 11px;font:12px var(--mono);cursor:pointer}
   .cmd button:hover{border-color:var(--accent);color:var(--accent)}
+  .stepline{display:flex;align-items:center;gap:9px;margin:16px 0 7px;font-size:13px;font-weight:600}
+  .stepline .num{width:19px;height:19px;border-radius:50%;display:grid;place-items:center;
+    background:#1c2740;border:1px solid #2f4573;color:var(--accent);font:11px/1 var(--mono);flex:none}
+  .stepline .os{font:11.5px var(--mono);color:var(--faint);font-weight:400}
+  #banner .fine{margin-top:7px;font-size:12px;line-height:1.5;color:var(--faint)}
+  #banner .fine code{font-size:11.5px}
 
   .card{background:var(--panel);border:1px solid var(--line);border-radius:11px;
     padding:20px;margin-bottom:15px}
@@ -129,14 +135,22 @@
 
   <div id="banner">
     <div class="t">This is the real interface, with nothing running behind it.</div>
-    <div class="d">The agent works on your own machine &mdash; it runs <code>git</code>,
-      <code>gh</code> and <code>vercel</code> against your folders and your sign-ins, which no
-      website is permitted to do. One command starts it locally and opens this same page,
-      connected to your machine.</div>
-    <div class="cmd">
-      <code id="install">npx github:aleco-art/ship-it</code>
-      <button id="copy">copy</button>
-    </div>
+    <div class="d">The agent runs <code>git</code>, <code>gh</code> and <code>vercel</code>
+      against your own folders and sign-ins &mdash; something no web page is permitted to do,
+      this one included. So the two commands below are <b>copied, not run</b>: you paste them
+      into your own terminal, which is the only place they could work. Two minutes, once.</div>
+
+    <div class="stepline"><span class="num">1</span> Node.js <span class="os" id="osname"></span></div>
+    <div class="cmd"><code id="nodecmd">node -v</code><button class="cp" data-for="nodecmd">copy</button></div>
+    <div class="fine">Skip this if <code>node -v</code> already prints a version. Otherwise the
+      command above installs it, or download it from <a href="https://nodejs.org" target="_blank" rel="noopener">nodejs.org</a>.
+      It is what provides <code>npx</code> in step 2.</div>
+
+    <div class="stepline"><span class="num">2</span> Start ship-it</div>
+    <div class="cmd"><code id="install">npx github:aleco-art/ship-it</code><button class="cp" data-for="install">copy</button></div>
+    <div class="fine">This page reopens at <code>127.0.0.1:4319</code>, connected to your machine,
+      and every button on it starts working. Nothing else to install &mdash; it sets up Git, the
+      GitHub CLI, the Vercel CLI and Claude Code from there.</div>
   </div>
 
   <div class="card">
@@ -302,8 +316,9 @@ function renderSteps(steps) {
 
 function previewNudge() {
   $('banner').scrollIntoView({ behavior: 'smooth', block: 'center' });
-  const c = $('copy');
-  c.textContent = 'run this first';
+  const c = document.querySelector('.cp[data-for="install"]');
+  if (!c) return;
+  c.textContent = 'start here';
   setTimeout(() => { c.textContent = 'copy'; }, 2200);
 }
 
@@ -461,16 +476,46 @@ function line(e) {
   log.scrollTop = log.scrollHeight;
 }
 
-$('copy').addEventListener('click', async (e) => {
-  const text = $('install').textContent;
-  try { await navigator.clipboard.writeText(text); e.target.textContent = 'copied'; }
-  catch {
-    const r = document.createRange(); r.selectNodeContents($('install'));
-    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
-    e.target.textContent = 'select + copy';
-  }
-  setTimeout(() => { e.target.textContent = 'copy'; }, 1800);
-});
+// Show the install line for the visitor's own OS. Only the user agent is
+// available here, so an unrecognised one falls back to the download page
+// rather than a command that would not work.
+const NODE_INSTALL = {
+  windows: { label: '· Windows', cmd: 'winget install OpenJS.NodeJS.LTS' },
+  mac: { label: '· macOS', cmd: 'brew install node' },
+  linux: { label: '· Linux', cmd: 'sudo apt install -y nodejs npm' },
+  other: { label: '', cmd: 'Download the LTS installer from nodejs.org' },
+};
+
+function detectOS() {
+  const p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.userAgent || '';
+  if (/win/i.test(p)) return 'windows';
+  if (/mac|darwin/i.test(p)) return 'mac';
+  if (/linux|x11|ubuntu|debian/i.test(p)) return 'linux';
+  return 'other';
+}
+
+(function setNodeCommand() {
+  const os = NODE_INSTALL[detectOS()];
+  $('nodecmd').textContent = os.cmd;
+  $('osname').textContent = os.label;
+})();
+
+// One handler for every copy button; each names the block it copies.
+for (const btn of document.querySelectorAll('.cp')) {
+  btn.addEventListener('click', async () => {
+    const src = $(btn.dataset.for);
+    try {
+      await navigator.clipboard.writeText(src.textContent);
+      btn.textContent = 'copied';
+    } catch {
+      // Clipboard access can be denied; selecting the text still lets them copy.
+      const r = document.createRange(); r.selectNodeContents(src);
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      btn.textContent = 'select + copy';
+    }
+    setTimeout(() => { btn.textContent = 'copy'; }, 1800);
+  });
+}
 
 // Render the four rows immediately so the page is never a blank "checking...".
 renderSteps(ORDER.map(([id, label]) => ({ id, label, pending: true, detail: 'checking...', action: null })));
