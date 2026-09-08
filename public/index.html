@@ -274,7 +274,11 @@ const post = (url, body) => fetch(url, {
 // PREVIEW is set when no local server answers, i.e. the page is being read on
 // the web. Everything still renders; nothing can act.
 let PREVIEW = false;
-let ready = false, pathOk = false, repoOk = false, runId = null, es = null, waiting = null;
+let ready = false, pathOk = false, repoOk = false, runId = null, es = null;
+// The step whose command we launched, and which action it was: an install
+// that finishes leaves the row needing a sign-in, so waiting has to end when
+// THAT action completes, not when the row is finally green.
+let waiting = null, waitingAction = null;
 
 const ORDER = [['node', 'Node.js'], ['git', 'Git'], ['gh', 'GitHub'],
                ['vercel', 'Vercel'], ['claude', 'Claude Code']];
@@ -367,6 +371,30 @@ function enterPreview() {
     + 'are inert: a web page cannot reach your terminal.';
 }
 
+// Whatever a CLI prints in its own terminal, the panel has to say so too -
+// and the row quietly turning green is easy to miss. Any step that becomes
+// satisfied announces itself, whether the button here started it or the user
+// ran the command in a terminal of their own.
+const wasSatisfied = new Map();
+function announceProgress(steps) {
+  for (const step of steps) {
+    const now = Boolean(step.installed && step.authed);
+    const before = wasSatisfied.get(step.id);
+    wasSatisfied.set(step.id, now);
+    if (before === false && now) {
+      line({ type: 'result', text: `${step.label} is ready — ${step.detail}` });
+    }
+  }
+  // Compare against the previous pass, then record. On the very first pass
+  // there is no previous value, so an already-configured machine is not told
+  // that something it has always had just became ready.
+  const all = steps.every((x) => x.installed && x.authed);
+  if (all && wasSatisfied.get('__all') === false) {
+    line({ type: 'result', text: 'Everything is connected. Paste a project above to ship it.' });
+  }
+  wasSatisfied.set('__all', all);
+}
+
 async function status() {
   let s;
   try {
@@ -378,12 +406,14 @@ async function status() {
     return null;
   }
   setBannerMode('local');
+  announceProgress(s.steps);
   renderSteps(s.steps);
   ready = s.ready;
   $('allset').hidden = !ready;
   $('path').disabled = !ready;
   $('repo').disabled = !ready;
-  if (waiting && s.steps.find((x) => x.id === waiting && x.installed && x.authed)) waiting = null;
+  const pending = waiting && s.steps.find((x) => x.id === waiting);
+  if (pending && pending.action !== waitingAction) { waiting = null; waitingAction = null; }
   sync();
   return s;
 }
@@ -391,7 +421,7 @@ async function status() {
 async function setup(id, action) {
   const r = await post('/api/setup', { id, action });
   if (r.error) return line({ type: 'error', text: r.error });
-  waiting = id;
+  waiting = id; waitingAction = action;
   status();
   line({ type: 'meta', text: r.launched
     ? 'Opened a terminal running:  ' + r.command + '\nFinish it there; this page updates on its own.'
@@ -402,10 +432,22 @@ async function setup(id, action) {
     const s = await status();
     if (!s) return clearInterval(timer);
     const step = s.steps.find((x) => x.id === id);
-    if ((step && step.installed && step.authed) || Date.now() - t0 > 300000) {
+    // Done once the action we launched is no longer what the row is asking
+    // for. An install that succeeds hands over to a sign-in, and the button
+    // has to come back so the user can take that next step.
+    const actionDone = step && step.action !== action;
+    if (actionDone || Date.now() - t0 > 300000) {
       clearInterval(timer);
-      if (step && step.installed && step.authed) line({ type: 'result', text: step.label + ': ' + step.detail });
-      else { waiting = null; status(); line({ type: 'stderr', text: 'Timed out waiting for ' + id + '.' }); }
+      if (actionDone && step.action) {
+        line({ type: 'meta', text: `${step.label} is installed. Press ${
+          step.action === 'login' ? 'Connect' : 'Install'} to finish: ${step.detail}.` });
+      } else if (!actionDone) {
+        waiting = null; waitingAction = null; status();
+        line({ type: 'stderr', text: 'Timed out waiting for ' + id
+          + '. Finish the command in the terminal, or press the button again.' });
+      }
+      // A fully satisfied row is announced by announceProgress, which also
+      // covers a sign-in completed in a terminal this page never opened.
     }
   }, 3000);
 }
