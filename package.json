@@ -1,0 +1,29 @@
+{
+  "name": "ship-it-agent",
+  "version": "0.1.0",
+  "description": "Turn a localhost project into a documented GitHub repo and a live Vercel deployment, in one run.",
+  "type": "module",
+  "bin": {
+    "ship-it": "bin/ship-it.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "agent"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "start": "node bin/ship-it.mjs"
+  },
+  "keywords": [
+    "vercel",
+    "github",
+    "deploy",
+    "documentation",
+    "claude",
+    "agent"
+  ],
+  "license": "MIT"
+}
