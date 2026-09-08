@@ -7,7 +7,7 @@
 // resulting session to appear.
 
 import { createServer } from 'node:http';
-import { spawn, execFile } from 'node:child_process';
+import { spawn, execFile, execFileSync } from 'node:child_process';
 import { readFile, stat, mkdir, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -25,17 +25,11 @@ const WORKSPACE = join(homedir(), '.ship-it', 'clones');
 // A tool installed after this process started lands on the persisted PATH,
 // not the inherited one. On Windows that lives in the registry.
 if (IS_WIN) {
-  try {
-    const { execFileSync } = await import('node:child_process');
-    const persisted = execFileSync('powershell.exe', ['-NoProfile', '-Command',
-      "[Environment]::GetEnvironmentVariable('Path','Machine') + ';' + " +
-      "[Environment]::GetEnvironmentVariable('Path','User')"],
-      { encoding: 'utf8', timeout: 10000 }).trim();
-    process.env.PATH = [process.env.PATH, persisted,
-      join(process.env.APPDATA || '', 'npm'),
-      join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Links'),
-    ].filter(Boolean).join(';');
-  } catch { /* keep the inherited PATH */ }
+  process.env.PATH = [process.env.PATH,
+    join(process.env.APPDATA || '', 'npm'),
+    join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Links'),
+  ].filter(Boolean).join(';');
+  // refreshPath() also runs here, right after its own declaration below.
 } else {
   // Homebrew and nvm are commonly absent from a GUI-launched process's PATH.
   process.env.PATH = [process.env.PATH, '/opt/homebrew/bin', '/usr/local/bin',
@@ -44,11 +38,47 @@ if (IS_WIN) {
 
 // ---------------------------------------------------------------- spawning
 
+// Only successful lookups are cached, and only while the file is still there.
+// A miss is never remembered: the whole point of this panel is that tools get
+// installed while it is running, and a cached "not found" would leave the
+// checklist permanently wrong for anyone who used its own Install button.
 const whichCache = new Map();
 
-function which(cmd) {
-  if (whichCache.has(cmd)) return whichCache.get(cmd);
-  const p = new Promise((res) => {
+// A tool installed after boot may also land on a PATH entry this process has
+// never seen - winget creates new directories - so a miss re-reads the
+// persisted PATH once before giving up.
+let pathRefreshedAt = 0;
+function refreshPath() {
+  if (!IS_WIN || Date.now() - pathRefreshedAt < 2000) return;
+  pathRefreshedAt = Date.now();
+  try {
+    const persisted = execFileSync('powershell.exe', ['-NoProfile', '-Command',
+      "[Environment]::GetEnvironmentVariable('Path','Machine') + ';' + " +
+      "[Environment]::GetEnvironmentVariable('Path','User')"],
+      { encoding: 'utf8', timeout: 10000 }).trim();
+    const seen = new Set(process.env.PATH.split(';'));
+    const added = persisted.split(';').filter((d) => d && !seen.has(d));
+    if (added.length) process.env.PATH = process.env.PATH + ';' + added.join(';');
+  } catch { /* keep what we have */ }
+}
+
+// Pick up anything installed before this process started. The declaration
+// above has to exist first: the function is hoisted but its `let` is not.
+refreshPath();
+
+async function which(cmd) {
+  const cached = whichCache.get(cmd);
+  if (cached && existsSync(cached)) return cached;
+  whichCache.delete(cmd);
+
+  let found = await locate(cmd);
+  if (!found) { refreshPath(); found = await locate(cmd); }
+  if (found) whichCache.set(cmd, found);
+  return found;
+}
+
+function locate(cmd) {
+  return new Promise((res) => {
     execFile(IS_WIN ? 'where.exe' : 'which', [cmd], { timeout: 5000 }, (err, stdout) => {
       if (err || !stdout.trim()) return res(null);
       const lines = stdout.trim().split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
@@ -68,8 +98,6 @@ function which(cmd) {
       res(rank(best) === 4 ? null : best);
     });
   });
-  whichCache.set(cmd, p);
-  return p;
 }
 
 /** Spawn a tool with an argument ARRAY, never an interpolated command string. */
