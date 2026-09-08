@@ -141,11 +141,12 @@
   </header>
 
   <div id="banner">
-    <div class="t">This is the real interface, with nothing running behind it.</div>
-    <div class="d">The agent runs <code>git</code>, <code>gh</code> and <code>vercel</code>
-      against your own folders and sign-ins &mdash; something no web page is permitted to do,
-      this one included. So the two commands below are <b>copied, not run</b>: you paste them
-      into your own terminal, which is the only place they could work. Two minutes, once.</div>
+    <div class="t" id="bannerTitle">This is the real interface, with nothing running behind it.</div>
+    <div class="d" id="bannerDesc">The agent runs <code>git</code>, <code>gh</code> and
+      <code>vercel</code> against your own folders and sign-ins &mdash; something no web page is
+      permitted to do, this one included. So the two commands below are <b>copied, not run</b>:
+      you paste them into your own terminal, which is the only place they could work. Two
+      minutes, once.</div>
 
     <div class="stepline"><span class="num">1</span> Node.js <span class="os" id="osname"></span></div>
     <div class="cmd"><code id="nodecmd">node -v</code><button class="cp" data-for="nodecmd">copy</button></div>
@@ -345,9 +346,24 @@ function previewNudge() {
   setTimeout(() => { c.textContent = 'copy'; }, 2200);
 }
 
+// The same two commands matter in both places, so the block is always shown -
+// only its framing changes. On the web they are what you run next; on the
+// local panel they are what you send to someone else, since you already ran
+// them. Hiding them once connected made the setup look like it had no step 1.
+function setBannerMode(mode) {
+  $('banner').classList.add('on');
+  if (mode === 'local') {
+    $('bannerTitle').textContent = 'Connected to this machine. Send these to set it up on another.';
+    $('bannerDesc').innerHTML =
+      'You already ran these, which is why the panel is live. They are here so you can pass them '
+      + 'on: the agent has to run on the machine that owns the folders and the sign-ins, so there '
+      + 'is nothing else to share &mdash; no account, no invite, no link to a hosted version.';
+  }
+}
+
 function enterPreview() {
   PREVIEW = true;
-  $('banner').classList.add('on');
+  setBannerMode('preview');
   renderSteps(FRESH);
   $('runNote').textContent = 'preview — run it locally to use';
   $('allset').hidden = true;
@@ -370,6 +386,7 @@ const DEMO = new URLSearchParams(location.search).has('demo');
 async function status() {
   if (DEMO) {
     $('demobar').hidden = false;
+    setBannerMode('preview');     // demo shows the newcomer's framing throughout
     renderSteps(FRESH);
     ready = false;
     $('allset').hidden = true;
@@ -389,6 +406,7 @@ async function status() {
     return null;
   }
   $('seedemo').hidden = false;   // only meaningful when a server is answering
+  setBannerMode('local');
   renderSteps(s.steps);
   ready = s.ready;
   $('allset').hidden = !ready;
