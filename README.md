@@ -8,7 +8,18 @@ Paste a folder you run on localhost. Get a documented GitHub repo and a live Ver
 npx github:aleco-art/ship-it
 ```
 
-That opens a local control panel at `http://127.0.0.1:4319`. Point it at a project,
+On Windows in PowerShell, use `npx.cmd` instead:
+
+```powershell
+npx.cmd github:aleco-art/ship-it
+```
+
+PowerShell resolves the bare name to `npx.ps1`, which the default `Restricted`
+execution policy refuses to load, so a correct install still fails with
+`UnauthorizedAccess`. The `.cmd` shim is exempt and works in PowerShell and cmd
+alike, so no security setting has to change.
+
+Either command opens a local control panel at `http://127.0.0.1:4319`. Point it at a project,
 give it a repo name, press **Run agent**.
 
 ---

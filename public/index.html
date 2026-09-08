@@ -148,6 +148,12 @@
 
     <div class="stepline"><span class="num">2</span> Start ship-it</div>
     <div class="cmd"><code id="install">npx github:aleco-art/ship-it</code><button class="cp" data-for="install">copy</button></div>
+    <div class="fine" id="winnote" hidden><b>Why <code>npx.cmd</code> and not <code>npx</code>:</b>
+      PowerShell resolves the bare name to <code>npx.ps1</code>, which Windows refuses to load
+      under its default <code>Restricted</code> execution policy &mdash; you get
+      <code>UnauthorizedAccess</code> on a perfectly good install. The <code>.cmd</code> shim is
+      exempt and works in both PowerShell and cmd, so nothing about your security settings has to
+      change.</div>
     <div class="fine">This page reopens at <code>127.0.0.1:4319</code>, connected to your machine,
       and every button on it starts working. Nothing else to install &mdash; it sets up Git, the
       GitHub CLI, the Vercel CLI and Claude Code from there.</div>
@@ -494,6 +500,18 @@ const NODE_INSTALL = {
   other: { label: '', cmd: 'Download the LTS installer from nodejs.org' },
 };
 
+// PowerShell resolves `npx` to npx.ps1, which a default Windows execution
+// policy of Restricted refuses to load - so the plain command fails with
+// UnauthorizedAccess on a machine that is otherwise set up correctly. The
+// .cmd shim is not subject to that policy and works in both PowerShell and
+// cmd.exe, so Windows gets it by default rather than as troubleshooting.
+const RUN_CMD = {
+  windows: 'npx.cmd github:aleco-art/ship-it',
+  mac: 'npx github:aleco-art/ship-it',
+  linux: 'npx github:aleco-art/ship-it',
+  other: 'npx github:aleco-art/ship-it',
+};
+
 function detectOS() {
   const p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.userAgent || '';
   if (/win/i.test(p)) return 'windows';
@@ -502,10 +520,12 @@ function detectOS() {
   return 'other';
 }
 
-(function setNodeCommand() {
-  const os = NODE_INSTALL[detectOS()];
-  $('nodecmd').textContent = os.cmd;
-  $('osname').textContent = os.label;
+(function setCommands() {
+  const key = detectOS();
+  $('nodecmd').textContent = NODE_INSTALL[key].cmd;
+  $('osname').textContent = NODE_INSTALL[key].label;
+  $('install').textContent = RUN_CMD[key];
+  if (key === 'windows') $('winnote').hidden = false;
 })();
 
 // One handler for every copy button; each names the block it copies.
