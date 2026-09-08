@@ -155,9 +155,9 @@
 
   <div class="card">
     <h2>Setup</h2>
-    <p class="lead">Four things have to be present and signed in. Each button opens a terminal and
-      runs the command for you &mdash; you finish the sign-in there, in the official CLI, so no
-      password or token ever passes through this app.</p>
+    <p class="lead" id="setupLead">Four things have to be present and signed in. Each button opens a
+      terminal and runs the command for you &mdash; you finish the sign-in there, in the official
+      CLI, so no password or token ever passes through this app.</p>
     <div id="steps"></div>
     <div class="allset" id="allset" hidden>&#10003; Everything is connected. You are ready to ship.</div>
   </div>
@@ -328,6 +328,14 @@ function enterPreview() {
   renderSteps(FRESH);
   $('runNote').textContent = 'preview — run it locally to use';
   $('allset').hidden = true;
+  // These buttons really do open a terminal, but only once a process on the
+  // reader's own machine is serving this page. Saying so here avoids
+  // promising something the web version cannot deliver.
+  $('setupLead').textContent =
+    'This is what a machine that has never been set up looks like. Once you run the command '
+    + 'above, each button here opens a terminal and runs the install or sign-in for you — in '
+    + 'the official CLI, so no password or token ever passes through the app. Right now they '
+    + 'are inert: a web page cannot reach your terminal.';
 }
 
 async function status() {
