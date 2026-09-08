@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ship-it — localhost to a documented repo and a live deploy</title>
+<meta name="description" content="Paste a folder you run on localhost. Get a documented GitHub repo and a verified Vercel deployment. Runs on your machine; your tokens stay yours.">
+<meta property="og:title" content="ship-it">
+<meta property="og:description" content="Paste a folder. Get a documented GitHub repo and a live Vercel URL. Four gates stop the run instead of leaving you half-shipped.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  :root{
+    --bg:#0b0c0e; --panel:#141619; --panel2:#0f1114; --line:#22252b; --line2:#2e323a;
+    --fg:#e8eaed; --dim:#9aa1ab; --faint:#646b76;
+    --ok:#3fb950; --warn:#d29922; --bad:#f85149; --accent:#4c8dff;
+    --mono:ui-monospace,"Cascadia Code","SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font:14px/1.6 ui-sans-serif,system-ui,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:880px;margin:0 auto;padding:30px 22px 70px}
+  a{color:var(--accent)}
+
+  header{display:flex;align-items:baseline;gap:13px;flex-wrap:wrap;margin-bottom:8px}
+  h1{font:600 26px/1 var(--mono);letter-spacing:-.02em;margin:0}
+  header .sub{color:var(--faint);font-size:13.5px}
+
+  #banner{display:none;background:#101725;border:1px solid #24365a;border-radius:10px;
+    padding:15px 17px;margin:20px 0 22px}
+  #banner.on{display:block}
+  #banner .t{font-weight:600;font-size:14px;margin-bottom:5px}
+  #banner .d{font-size:13px;color:var(--dim);margin-bottom:13px;max-width:64ch}
+  #banner code{font:12.5px var(--mono);color:var(--accent)}
+  .cmd{display:flex;align-items:center;gap:11px;background:#0a0d13;border:1px solid var(--line2);
+    border-radius:8px;padding:11px 13px}
+  .cmd code{font:13.5px var(--mono);color:var(--fg);flex:1;overflow-x:auto;white-space:nowrap}
+  .cmd code::before{content:"$ ";color:var(--faint)}
+  .cmd button{flex:none;background:transparent;border:1px solid var(--line2);color:var(--dim);
+    border-radius:6px;padding:5px 11px;font:12px var(--mono);cursor:pointer}
+  .cmd button:hover{border-color:var(--accent);color:var(--accent)}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:11px;
+    padding:20px;margin-bottom:15px}
+  .card h2{font:600 11.5px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:.07em;
+    text-transform:uppercase;color:var(--dim);margin:0 0 5px}
+  .card .lead{color:var(--faint);font-size:12.5px;margin:0 0 15px;max-width:70ch}
+
+  .step{display:flex;align-items:center;gap:13px;padding:11px 0;border-top:1px solid var(--line)}
+  .step:first-of-type{border-top:0}
+  .mark{width:19px;height:19px;border-radius:50%;flex:none;display:grid;place-items:center;
+    font:11px/1 var(--mono);border:1px solid var(--line2);color:var(--faint)}
+  .mark.ok{background:rgba(63,185,80,.13);border-color:var(--ok);color:var(--ok)}
+  .mark.todo{border-color:var(--warn);color:var(--warn)}
+  .step .name{font:13px var(--mono);min-width:108px}
+  .step .detail{color:var(--faint);font:12px var(--mono);flex:1;min-width:0;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  button{background:var(--accent);color:#fff;border:0;border-radius:7px;padding:7px 15px;
+    font:600 13px ui-sans-serif,system-ui,sans-serif;cursor:pointer}
+  button:disabled{background:#22262c;color:var(--faint);cursor:default}
+  button.ghost{background:transparent;border:1px solid var(--line2);color:var(--dim)}
+  button.big{padding:12px 24px;font-size:14px;border-radius:8px}
+  .allset{display:flex;align-items:center;gap:9px;color:var(--ok);font:12.5px var(--mono);margin-top:13px}
+
+  .lbl{display:block;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--dim);margin-bottom:7px}
+  input[type=text]{width:100%;background:var(--panel2);border:1px solid var(--line2);border-radius:7px;
+    padding:11px 13px;color:var(--fg);font:13px var(--mono);outline:none}
+  input[type=text]:focus{border-color:var(--accent)}
+  input[type=text]:disabled{opacity:.5;cursor:not-allowed}
+  .field+.field{margin-top:16px}
+  .hint{margin-top:8px;font:12px/1.5 var(--mono);color:var(--faint);white-space:pre-wrap;word-break:break-word}
+  .hint.ok{color:var(--ok)} .hint.bad{color:var(--bad)} .hint.warn{color:var(--warn)}
+  .row{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-top:16px}
+  .opt{display:inline-flex;align-items:center;gap:7px;font:13px var(--mono);color:var(--dim);cursor:pointer}
+  input[type=radio]{accent-color:var(--accent);cursor:pointer;margin:0}
+  .actions{display:flex;gap:12px;align-items:center;margin-top:20px;flex-wrap:wrap}
+  .note{font:12px var(--mono);color:var(--faint)}
+
+  .flow{display:grid;grid-template-columns:repeat(auto-fit,minmax(172px,1fr));gap:9px}
+  .ph{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px 13px}
+  .ph .n{font:10.5px var(--mono);color:var(--accent);letter-spacing:.04em}
+  .ph .t{font-size:13px;font-weight:600;margin:4px 0 3px}
+  .ph .d{font-size:12px;line-height:1.45;color:var(--faint)}
+  .ph.gate{border-color:#453718;background:#15130e}
+  .ph.gate .n{color:var(--warn)}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}
+  th{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);font-weight:600}
+  td:last-child{color:var(--dim);white-space:nowrap;font:12.5px var(--mono)}
+  tr:last-child td{border-bottom:0}
+  .plain{color:var(--dim);max-width:70ch;font-size:13.5px}
+  .plain b{color:var(--fg)}
+  .plain li{margin-bottom:8px}
+  .plain code{font:12.5px var(--mono);color:var(--accent)}
+
+  #log{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:16px;
+    font:12px/1.65 var(--mono);white-space:pre-wrap;word-break:break-word;max-height:440px;
+    overflow-y:auto;margin-bottom:15px}
+  #log:empty{display:none}
+  .ln{display:flex;gap:10px;padding:1px 0}
+  .tag{flex:none;width:54px;color:var(--faint);text-align:right;user-select:none}
+  .ln.tool .tag{color:var(--accent)}
+  .ln.text .body{color:var(--fg)}
+  .ln.meta .body,.ln.raw .body{color:var(--dim)}
+  .ln.stderr .body,.ln.error .body{color:var(--bad)}
+  .ln.result .body{color:var(--ok)}
+  .ln.result.err .body{color:var(--bad)}
+  .ln.prompt .body{color:var(--warn);background:#181510;padding:10px;border-radius:6px}
+  @keyframes blink{50%{opacity:.4}}
+  .waiting{animation:blink 1.2s ease-in-out infinite}
+
+  footer{margin-top:34px;padding-top:22px;border-top:1px solid var(--line);color:var(--faint);
+    font-size:13px;display:flex;gap:20px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>ship-it</h1>
+    <span class="sub">localhost &rarr; documented GitHub repo &rarr; live Vercel deploy</span>
+  </header>
+
+  <div id="banner">
+    <div class="t">This is the real interface, with nothing running behind it.</div>
+    <div class="d">The agent works on your own machine &mdash; it runs <code>git</code>,
+      <code>gh</code> and <code>vercel</code> against your folders and your sign-ins, which no
+      website is permitted to do. One command starts it locally and opens this same page,
+      connected to your machine.</div>
+    <div class="cmd">
+      <code id="install">npx github:aleco-art/ship-it</code>
+      <button id="copy">copy</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Setup</h2>
+    <p class="lead">Four things have to be present and signed in. Each button opens a terminal and
+      runs the command for you &mdash; you finish the sign-in there, in the official CLI, so no
+      password or token ever passes through this app.</p>
+    <div id="steps"></div>
+    <div class="allset" id="allset" hidden>&#10003; Everything is connected. You are ready to ship.</div>
+  </div>
+
+  <div class="card">
+    <h2>Ship a project</h2>
+    <p class="lead">Paste a folder on your computer, or a git URL to clone.</p>
+
+    <div class="field">
+      <span class="lbl">Local project</span>
+      <input type="text" id="path" spellcheck="false" disabled
+             placeholder="/home/you/my-app   or   https://github.com/you/my-app.git">
+      <div class="hint" id="pathHint">A folder path, a file:// URL, or a git URL. Not a localhost address — a running server has no source to ship.</div>
+    </div>
+
+    <div class="field">
+      <span class="lbl">GitHub repo name</span>
+      <input type="text" id="repo" spellcheck="false" disabled placeholder="my-app">
+      <div class="hint" id="repoHint">If it already exists the agent pushes into it. If not, it creates it.</div>
+    </div>
+
+    <div class="row">
+      <label class="opt"><input type="radio" name="vis" value="private" checked> private</label>
+      <label class="opt"><input type="radio" name="vis" value="public"> public</label>
+      <span class="hint" style="margin:0">Only applies when creating a new repo.</span>
+    </div>
+
+    <div class="actions">
+      <button id="run" class="big" disabled>Run agent</button>
+      <button id="stop" class="ghost" hidden>Stop</button>
+      <span class="note" id="runNote">checking your machine...</span>
+    </div>
+  </div>
+
+  <div id="log"></div>
+
+  <div class="card">
+    <h2>What the agent does</h2>
+    <p class="lead">Eight phases. The four in amber are gates: if one fails the run stops and tells
+      you why, instead of leaving you half-shipped.</p>
+    <div class="flow">
+      <div class="ph gate"><div class="n">01 · gate</div><div class="t">Preflight</div>
+        <div class="d">Tools, both sign-ins, repo state. Stops before touching anything.</div></div>
+      <div class="ph"><div class="n">02</div><div class="t">Recon</div>
+        <div class="d">Framework, package manager, scripts, existing docs.</div></div>
+      <div class="ph gate"><div class="n">03 · gate</div><div class="t">Secret scan</div>
+        <div class="d">Fixes .gitignore, refuses to commit a live credential.</div></div>
+      <div class="ph gate"><div class="n">04 · gate</div><div class="t">Local build</div>
+        <div class="d">Runs your real production build before anything remote exists.</div></div>
+      <div class="ph"><div class="n">05</div><div class="t">Env vars</div>
+        <div class="d">Finds every variable your code reads, writes .env.example, pushes them to Vercel.</div></div>
+      <div class="ph"><div class="n">06</div><div class="t">Docs</div>
+        <div class="d">README from verified facts only — every command in it was actually run.</div></div>
+      <div class="ph"><div class="n">07</div><div class="t">GitHub + Vercel</div>
+        <div class="d">Creates or reuses the repo, connects git, deploys to production.</div></div>
+      <div class="ph gate"><div class="n">08 · gate</div><div class="t">Verify</div>
+        <div class="d">Fetches the live URL and confirms a push auto-deploys.</div></div>
+    </div>
+
+    <p class="plain" style="margin-top:20px"><b>Why that order.</b> It is sorted by what a mistake
+      costs to find.</p>
+    <table>
+      <thead><tr><th>Failure found…</th><th>Costs</th></tr></thead>
+      <tbody>
+        <tr><td>in recon</td><td>seconds</td></tr>
+        <tr><td>in the local production build</td><td>~1 minute</td></tr>
+        <tr><td>in the Vercel build</td><td>a push, 2–5 min, a log dig</td></tr>
+        <tr><td>after the production deploy</td><td>a broken public URL</td></tr>
+        <tr><td>after a secret is pushed</td><td>rotating every key</td></tr>
+      </tbody>
+    </table>
+    <p class="plain" style="margin-top:16px">So: secrets before git, build before deploy, docs before
+      the first commit — and never create anything remote to find out whether the local state was
+      valid. <b>Half-shipped reported as success is worse than a clean stop.</b></p>
+  </div>
+
+  <div class="card">
+    <h2>Honest limits</h2>
+    <ul class="plain" style="margin:0;padding-left:19px">
+      <li><b>It saves the most time once per project.</b> After the first ship, <code>git push</code>
+        already deploys. This automates the setup you do once and never remember.</li>
+      <li><b>Vercel-shaped projects only.</b> Static, Next.js, Vite, Astro, SvelteKit, Nuxt, Remix.
+        A long-running server, websocket or background worker does not run on serverless functions —
+        the agent stops and says so rather than shipping something broken.</li>
+      <li><b>Read the README it writes.</b> Built from verified facts, still worth your eyes.</li>
+      <li><b>A run costs tokens</b> on your Claude account.</li>
+      <li><b>Private by default.</b> Public repos happen only when you pick public.</li>
+    </ul>
+  </div>
+
+  <footer>
+    <a href="https://github.com/aleco-art/ship-it">Source on GitHub</a>
+    <span>MIT</span>
+    <span>Runs locally · your tokens stay yours</span>
+  </footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const post = (url, body) => fetch(url, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', 'x-ship-it': '1' },
+  body: JSON.stringify(body),
+}).then((r) => r.json());
+
+// PREVIEW is set when no local server answers, i.e. the page is being read on
+// the web. Everything still renders; nothing can act.
+let PREVIEW = false;
+let ready = false, pathOk = false, repoOk = false, runId = null, es = null, waiting = null;
+
+const ORDER = [['git', 'Git'], ['gh', 'GitHub'], ['vercel', 'Vercel'], ['claude', 'Claude Code']];
+// What a machine that has never been set up actually looks like.
+const FRESH = [
+  { id: 'git', label: 'Git', installed: false, authed: false, detail: 'not installed', action: 'install' },
+  { id: 'gh', label: 'GitHub', installed: false, authed: false, detail: 'CLI not installed', action: 'install' },
+  { id: 'vercel', label: 'Vercel', installed: false, authed: false, detail: 'CLI not installed', action: 'install' },
+  { id: 'claude', label: 'Claude Code', installed: false, authed: false, detail: 'CLI not installed', action: 'install' },
+];
+
+function renderSteps(steps) {
+  const box = document.createDocumentFragment();
+  for (const step of steps) {
+    const row = document.createElement('div');
+    row.className = 'step';
+
+    const done = step.installed && step.authed;
+    const mark = document.createElement('span');
+    mark.className = 'mark ' + (step.pending ? '' : done ? 'ok' : 'todo');
+    mark.textContent = step.pending ? '·' : done ? '✓' : '!';
+    row.appendChild(mark);
+
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = step.label || step.id;
+    row.appendChild(name);
+
+    const detail = document.createElement('span');
+    detail.className = 'detail';
+    detail.textContent = step.detail;
+    row.appendChild(detail);
+
+    if (step.action) {
+      const b = document.createElement('button');
+      if (waiting === step.id) {
+        b.textContent = 'waiting...'; b.disabled = true; row.classList.add('waiting');
+      } else {
+        b.textContent = step.action === 'install' ? 'Install' : 'Connect';
+        b.onclick = () => (PREVIEW ? previewNudge() : setup(step.id, step.action));
+      }
+      row.appendChild(b);
+    }
+    box.appendChild(row);
+  }
+  $('steps').replaceChildren(box);
+}
+
+function previewNudge() {
+  $('banner').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const c = $('copy');
+  c.textContent = 'run this first';
+  setTimeout(() => { c.textContent = 'copy'; }, 2200);
+}
+
+function enterPreview() {
+  PREVIEW = true;
+  $('banner').classList.add('on');
+  renderSteps(FRESH);
+  $('runNote').textContent = 'preview — run it locally to use';
+  $('allset').hidden = true;
+}
+
+async function status() {
+  let s;
+  try {
+    const r = await fetch('/api/status');
+    if (!r.ok) throw new Error('no server');
+    s = await r.json();
+  } catch {
+    enterPreview();
+    return null;
+  }
+  renderSteps(s.steps);
+  ready = s.ready;
+  $('allset').hidden = !ready;
+  $('path').disabled = !ready;
+  $('repo').disabled = !ready;
+  if (waiting && s.steps.find((x) => x.id === waiting && x.installed && x.authed)) waiting = null;
+  sync();
+  return s;
+}
+
+async function setup(id, action) {
+  const r = await post('/api/setup', { id, action });
+  if (r.error) return line({ type: 'error', text: r.error });
+  waiting = id;
+  status();
+  line({ type: 'meta', text: r.launched
+    ? 'Opened a terminal running:  ' + r.command + '\nFinish it there; this page updates on its own.'
+    : 'Could not open a terminal. Run this yourself:  ' + r.command });
+
+  const t0 = Date.now();
+  const timer = setInterval(async () => {
+    const s = await status();
+    if (!s) return clearInterval(timer);
+    const step = s.steps.find((x) => x.id === id);
+    if ((step && step.installed && step.authed) || Date.now() - t0 > 300000) {
+      clearInterval(timer);
+      if (step && step.installed && step.authed) line({ type: 'result', text: step.label + ': ' + step.detail });
+      else { waiting = null; status(); line({ type: 'stderr', text: 'Timed out waiting for ' + id + '.' }); }
+    }
+  }, 3000);
+}
+
+let pathTimer;
+$('path').addEventListener('input', () => {
+  clearTimeout(pathTimer); pathOk = false; sync();
+  pathTimer = setTimeout(inspect, 500);
+});
+
+async function inspect() {
+  const p = $('path').value.trim();
+  if (!p) return setHint('pathHint', '', 'A folder path, a file:// URL, or a git URL.');
+  setHint('pathHint', '', 'inspecting...');
+  const r = await post('/api/inspect', { path: p });
+  if (r.error) { pathOk = false; setHint('pathHint', 'bad', r.error); return sync(); }
+
+  pathOk = true;
+  const bits = [];
+  if (r.clonedFrom) bits.push('cloned from ' + r.clonedFrom + '\ninto ' + r.path);
+  bits.push(r.framework + '   ' + r.pm + (r.hasPackageJson ? '' : '   (no package.json)'));
+  if (r.scripts.length) bits.push('scripts: ' + r.scripts.join(', '));
+  bits.push(r.isRepo
+    ? "git repo on '" + r.branch + "'" + (r.origin ? '   origin: ' + r.origin : '   no origin yet')
+    : 'not a git repo yet - the agent will run git init');
+  if (r.linkedToVercel) bits.push('already linked to a Vercel project');
+  let cls = 'ok';
+  if (!r.deployable) {
+    cls = 'warn';
+    bits.push('WARNING: a long-running server does not run on Vercel functions.\nThe agent will stop and explain rather than ship something broken.');
+  }
+  if (r.leaked.length) {
+    cls = 'bad'; pathOk = false;
+    bits.push('BLOCKED: these are committed and look like secrets:\n  ' + r.leaked.join('\n  ')
+      + '\nRotate them and purge from history first.');
+  }
+  setHint('pathHint', cls, bits.join('\n'));
+  if (!$('repo').value.trim() && r.suggestedName) { $('repo').value = r.suggestedName; checkRepo(); }
+  sync();
+}
+
+let repoTimer;
+$('repo').addEventListener('input', () => {
+  clearTimeout(repoTimer); repoOk = false; sync();
+  repoTimer = setTimeout(checkRepo, 500);
+});
+
+async function checkRepo() {
+  const name = $('repo').value.trim();
+  if (!name) { repoOk = false; setHint('repoHint', '', 'If it exists the agent pushes into it. If not, it creates it.'); return sync(); }
+  const r = await post('/api/repo', { name });
+  if (r.error) { repoOk = false; setHint('repoHint', 'bad', r.error); return sync(); }
+  repoOk = true;
+  if (!r.known) setHint('repoHint', 'warn', r.reason + ' - cannot tell whether this repo exists');
+  else if (r.exists) setHint('repoHint', 'ok', 'exists (' + String(r.visibility).toLowerCase()
+    + ') - the agent will push into ' + r.url);
+  else setHint('repoHint', 'ok', 'does not exist - the agent will create ' + r.full);
+  sync();
+}
+
+function setHint(id, cls, text) { const el = $(id); el.className = 'hint ' + cls; el.textContent = text; }
+
+function sync() {
+  if (PREVIEW) return;
+  $('run').disabled = !(ready && pathOk && repoOk && !runId);
+  $('runNote').textContent = runId ? 'running...'
+    : !ready ? 'finish setup first'
+    : (pathOk && repoOk) ? 'ready' : 'fill in both fields';
+}
+
+$('run').addEventListener('click', async () => {
+  $('log').innerHTML = '';
+  const r = await post('/api/run', {
+    path: $('path').value.trim(),
+    repo: $('repo').value.trim(),
+    visibility: document.querySelector('input[name=vis]:checked').value,
+  });
+  if (r.error) return line({ type: 'error', text: r.error });
+  runId = r.id; $('stop').hidden = false; sync();
+  es = new EventSource('/api/stream?id=' + encodeURIComponent(runId));
+  es.onmessage = (ev) => {
+    const e = JSON.parse(ev.data);
+    if (e.type === 'done') {
+      es.close(); es = null; runId = null; $('stop').hidden = true;
+      line({ type: 'meta', text: e.code === 0 ? '--- finished ---' : '--- exited with code ' + e.code + ' ---' });
+      status();
+    } else line(e);
+  };
+  es.onerror = () => { if (es) { es.close(); es = null; runId = null; $('stop').hidden = true; sync(); } };
+});
+
+$('stop').addEventListener('click', () => { if (runId) post('/api/stop', { id: runId }); });
+
+const TAGS = { tool: 'tool', text: '', meta: '', stderr: 'stderr', error: 'error',
+               result: 'result', prompt: 'prompt', raw: '' };
+function line(e) {
+  const log = $('log');
+  const div = document.createElement('div');
+  div.className = 'ln ' + e.type + (e.type === 'result' && e.error ? ' err' : '');
+  const tag = document.createElement('span');
+  tag.className = 'tag'; tag.textContent = TAGS[e.type] === undefined ? e.type : TAGS[e.type];
+  const body = document.createElement('span');
+  body.className = 'body'; body.textContent = e.text || '';
+  div.appendChild(tag); div.appendChild(body);
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+$('copy').addEventListener('click', async (e) => {
+  const text = $('install').textContent;
+  try { await navigator.clipboard.writeText(text); e.target.textContent = 'copied'; }
+  catch {
+    const r = document.createRange(); r.selectNodeContents($('install'));
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    e.target.textContent = 'select + copy';
+  }
+  setTimeout(() => { e.target.textContent = 'copy'; }, 1800);
+});
+
+// Render the four rows immediately so the page is never a blank "checking...".
+renderSteps(ORDER.map(([id, label]) => ({ id, label, pending: true, detail: 'checking...', action: null })));
+status();
+// A sign-in finished in any terminal, not just one this page opened, still counts.
+setInterval(() => { if (!PREVIEW && !runId && !waiting) status(); }, 10000);
+</script>
+</body>
+</html>

@@ -508,8 +508,10 @@ const server = createServer(async (req, res) => {
 
   try {
     if (url.pathname === '/' || url.pathname === '/index.html') {
+      // The same file Vercel serves. On the web it has no server to talk to
+      // and falls back to a preview of this interface; here it is live.
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      return res.end(await readFile(join(HERE, 'ui.html')));
+      return res.end(await readFile(join(HERE, '..', 'public', 'index.html')));
     }
     if (url.pathname === '/api/status') return json(res, 200, await stepStatus());
 
