@@ -173,7 +173,7 @@ const INSTALL = {
 const LOGIN = {
   gh: 'gh auth login --web --hostname github.com --git-protocol https',
   vercel: 'vercel login',
-  claude: 'claude',   // first run walks through sign-in, then exits on /exit
+  claude: 'claude auth login',
 };
 
 const STEP_IDS = ['git', 'gh', 'vercel', 'claude'];
@@ -230,18 +230,23 @@ async function stepStatus() {
   });
 
   const cc = await which('claude');
-  // Unlike gh and vercel there is no free way to ask this CLI whether it has a
-  // session: the token lives in the OS credential store, the config file it
-  // writes stays behind after a sign-out, and the only real probe is a billed
-  // request. So this reports installation honestly, keeps the Sign in button
-  // available, and lets the run itself be the authority - startRun turns the
-  // CLI's own "Not logged in" into an actionable message.
+  // `claude auth status --json` answers this for free - no API call, no tokens
+  // spent - so the session is read the same way as the other two rather than
+  // guessed from a config file that outlives a sign-out.
+  let ccAuth = null;
+  if (cc) {
+    const r = await run('claude', ['auth', 'status', '--json']);
+    const raw = r.out || r.err || '';
+    try {
+      const j = JSON.parse(raw.slice(raw.indexOf('{')));
+      if (j.loggedIn) ccAuth = j.authMethod && j.authMethod !== 'none' ? j.authMethod : 'signed in';
+    } catch { /* unreadable output is treated as not signed in */ }
+  }
   steps.push({
     id: 'claude', label: 'Claude Code', kind: 'account',
-    installed: Boolean(cc), authed: Boolean(cc),
-    detail: cc ? 'installed - sign-in is confirmed by the first run' : 'CLI not installed',
-    action: cc ? 'login' : 'install',
-    buttonLabel: cc ? 'Sign in' : 'Install',
+    installed: Boolean(cc), authed: Boolean(ccAuth),
+    detail: !cc ? 'CLI not installed' : ccAuth ? `signed in (${ccAuth})` : 'not signed in',
+    action: !cc ? 'install' : ccAuth ? null : 'login',
   });
 
   return {
@@ -566,8 +571,8 @@ function translate(state, line) {
     if (/not logged in|please run \/login|authentication_failed/i.test(text)) {
       push(state, { type: 'error', text:
         'Claude Code is installed but not signed in, so the agent never started.\n'
-        + 'Press "Sign in" on the Claude Code row, finish /login in the terminal it '
-        + 'opens, then run this again. Nothing was created.' });
+        + 'Press Connect on the Claude Code row, finish the sign-in in the terminal '
+        + 'it opens, then run this again. Nothing was created.' });
     }
     push(state, { type: 'result', text, error: Boolean(msg.is_error) });
   }
