@@ -17,6 +17,9 @@
     --mono:ui-monospace,"Cascadia Code","SF Mono",Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box}
+  /* A class that sets `display` outbids the browser's [hidden] rule, which
+     silently turns the attribute into a no-op. Settle it once, globally. */
+  [hidden]{display:none!important}
   body{margin:0;background:var(--bg);color:var(--fg);
     font:14px/1.6 ui-sans-serif,system-ui,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
   .wrap{max-width:880px;margin:0 auto;padding:30px 22px 70px}
