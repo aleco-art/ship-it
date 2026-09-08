@@ -54,12 +54,6 @@
   .card h2{font:600 11.5px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:.07em;
     text-transform:uppercase;color:var(--dim);margin:0 0 5px;
     display:flex;align-items:baseline;gap:11px;flex-wrap:wrap}
-  .seedemo{font:400 11px var(--mono);text-transform:none;letter-spacing:0;color:var(--faint)}
-  .seedemo:hover{color:var(--accent)}
-  #demobar{background:#1a1420;border:1px solid #4a2f5c;border-radius:10px;padding:13px 16px;
-    margin:20px 0 15px;font-size:13px;line-height:1.55;color:#c9a9dd}
-  #demobar b{color:#e4d0ef}
-  #demobar a{color:#b98ede}
   .card .lead{color:var(--faint);font-size:12.5px;margin:0 0 15px;max-width:70ch}
 
   .step{display:flex;align-items:center;gap:13px;padding:11px 0;border-top:1px solid var(--line)}
@@ -167,14 +161,8 @@
       GitHub CLI, the Vercel CLI and Claude Code from there.</div>
   </div>
 
-  <div id="demobar" hidden>
-    <b>Demo mode.</b> The checklist below is drawn the way a machine with nothing installed
-    would report it, so you can see what a first-time visitor sees. The buttons still run the
-    real commands. <a href="?" id="exitdemo">Show my actual setup</a>
-  </div>
-
   <div class="card">
-    <h2>Setup <a href="?demo=1" class="seedemo" id="seedemo" hidden>see it as a new user</a></h2>
+    <h2>Setup</h2>
     <p class="lead" id="setupLead">Five things have to be present, and two of them signed in. Each button opens a
       terminal and runs the command for you &mdash; you finish the sign-in there, in the official
       CLI, so no password or token ever passes through this app.</p>
@@ -377,25 +365,7 @@ function enterPreview() {
     + 'are inert: a web page cannot reach your terminal.';
 }
 
-// ?demo=1 draws the checklist as an unconfigured machine would report it, so
-// the owner of a fully set up machine can still see what a newcomer sees.
-// The buttons stay wired to the real endpoints; only the reported state is
-// substituted, and the bar above says so.
-const DEMO = new URLSearchParams(location.search).has('demo');
-
 async function status() {
-  if (DEMO) {
-    $('demobar').hidden = false;
-    setBannerMode('preview');     // demo shows the newcomer's framing throughout
-    renderSteps(FRESH);
-    ready = false;
-    $('allset').hidden = true;
-    $('path').disabled = true;
-    $('repo').disabled = true;
-    $('runNote').textContent = 'demo — finish setup first';
-    return null;
-  }
-
   let s;
   try {
     const r = await fetch('/api/status');
@@ -405,7 +375,6 @@ async function status() {
     enterPreview();
     return null;
   }
-  $('seedemo').hidden = false;   // only meaningful when a server is answering
   setBannerMode('local');
   renderSteps(s.steps);
   ready = s.ready;
@@ -602,7 +571,7 @@ for (const btn of document.querySelectorAll('.cp')) {
 renderSteps(ORDER.map(([id, label]) => ({ id, label, pending: true, detail: 'checking...', action: null })));
 status();
 // A sign-in finished in any terminal, not just one this page opened, still counts.
-setInterval(() => { if (!PREVIEW && !DEMO && !runId && !waiting) status(); }, 10000);
+setInterval(() => { if (!PREVIEW && !runId && !waiting) status(); }, 10000);
 </script>
 </body>
 </html>
