@@ -1,5 +1,7 @@
 # ship-it
 
+**[ship-it-agent.vercel.app](https://ship-it-agent.vercel.app)** — the interface, in preview.
+
 Paste a folder you run on localhost. Get a documented GitHub repo and a live Vercel URL.
 
 ```bash
